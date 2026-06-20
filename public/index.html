@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#3b6ef5">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>📋</text></svg>">
+  <title>PRD 确认工作台</title>
+  <link rel="stylesheet" href="studio.css">
+</head>
+<body class="mode-proto-preview">
+  <header class="topbar">
+    <div class="brand">📋 PRD 确认工作台 <small id="projTitle"></small></div>
+    <div class="spacer"></div>
+    <div class="modes" id="protoModes" style="display:none">
+      <button data-mode="preview" class="active">预览</button>
+      <button data-mode="edit">编辑</button>
+      <button data-mode="annotate">批注</button>
+    </div>
+    <button class="iconbtn" id="themeBtn" title="切换主题">🌙</button>
+    <button class="primary" id="submitBtn">提交反馈 <span class="badge" id="fbCount">0</span></button>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="prd" class="active">PRD 评审</button>
+    <button data-tab="proto">交互原型</button>
+    <button data-tab="arch">架构</button>
+    <button data-tab="test">测试场景</button>
+  </nav>
+
+  <main id="view"></main>
+
+  <!-- 评论气泡 -->
+  <div class="pop hidden" id="commentPop">
+    <h4 id="popTitle">添加批注</h4>
+    <textarea id="popText" placeholder="写下你的意见 / 疑问 / 要改的地方…"></textarea>
+    <div class="row">
+      <button class="ghost" id="popDelete">删除</button>
+      <button class="ghost" id="popCancel">取消</button>
+      <button class="primary" id="popSave">保存</button>
+    </div>
+  </div>
+
+  <!-- 提交反馈弹窗 -->
+  <div class="modal hidden" id="submitDialog">
+    <div class="sheet">
+      <h3>提交反馈</h3>
+      <p class="sub">所有意见会打包发回给 AI，用于据反馈迭代规格。</p>
+      <div class="field"><label>你的名字（可选）</label><input id="reviewerName" placeholder="Michael"></div>
+      <div class="field"><label>总体意见（可选）</label><textarea id="summaryText" rows="2" placeholder="一句话总评…"></textarea></div>
+      <div class="field"><label>本次反馈清单</label><div class="summList" id="summList"></div></div>
+      <div class="btnrow">
+        <button class="primary" id="doSubmit">确认提交</button>
+        <button class="ghost" id="downloadBtn">导出文件</button>
+        <button class="ghost" id="cancelSubmit">返回</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="vendor/interact.min.js"></script>
+  <script src="vendor/mermaid.min.js"></script>
+  <script>
+    /* 按 ?p=<项目名> 动态加载项目数据；默认 demo。例如 ?p=recorder-app */
+    (function () {
+      var p = (new URLSearchParams(location.search).get('p') || 'demo').replace(/[^a-z0-9_-]/gi, '');
+      document.write('<scr' + 'ipt src="projects/' + p + '.js"><\/scr' + 'ipt>');
+    })();
+  </script>
+  <script src="studio.js"></script>
+</body>
+</html>

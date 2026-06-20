@@ -1,0 +1,7 @@
+node_modules/
+feedback/
+.DS_Store
+*.log
+
+# 私有项目数据（不进公开仓库；示范保留 demo.js）
+public/projects/recorder-app.js

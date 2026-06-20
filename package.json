@@ -1,0 +1,13 @@
+{
+  "name": "prd-review-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "可复用的交互式 PRD/需求确认工作台：单页 + 4 个确认面 + 一键提交反馈给 AI 迭代",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
