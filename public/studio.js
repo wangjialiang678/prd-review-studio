@@ -19,12 +19,24 @@
   function toast(m) { const t = el('div', 'toast', esc(m)); document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
   function toastSaved() { toast('已保存 ✓'); }
 
+  // ---------- rounds state ----------
+  let rounds = [];
+  try { rounds = JSON.parse(localStorage.getItem(LSK + ':rounds')) || []; } catch (e) { }
+  function saveRounds() { localStorage.setItem(LSK + ':rounds', JSON.stringify(rounds)); }
+  function currentRoundNum() { return rounds.length + 1; }
+
   // ---------- feedback state ----------
   let fb = {};
   try { fb = JSON.parse(localStorage.getItem(LSK + ':fb')) || {}; } catch (e) { }
   fb.verdicts = fb.verdicts || {}; fb.comments = fb.comments || []; fb.moves = fb.moves || {};
-  function saveFb() { localStorage.setItem(LSK + ':fb', JSON.stringify(fb)); updateCount(); updateTabBadges(); }
+  function saveFb() { localStorage.setItem(LSK + ':fb', JSON.stringify(fb)); updateCount(); updateTabBadges(); updateRoundLabel(); }
   function saveFbWithToast() { saveFb(); toastSaved(); }
+
+  // ---------- round label ----------
+  function updateRoundLabel() {
+    const lbl = document.getElementById('roundLabel');
+    if (lbl) lbl.textContent = '第 ' + currentRoundNum() + ' 轮';
+  }
 
   // ---------- count helpers ----------
   // 判断某条 verdict 是否"已填"（含 defaultVerdict 语义）
@@ -416,16 +428,170 @@
   document.getElementById('popDelete').onclick = () => { if (popCtx && popCtx.id) { fb.comments = fb.comments.filter(x => x.id !== popCtx.id); saveFb(); } pop.classList.add('hidden'); if (curTab === 'proto') renderProto(); };
   document.getElementById('popCancel').onclick = () => pop.classList.add('hidden');
 
+  // ---------- 历史轮次面板 ----------
+  const histDlg = document.getElementById('histDialog');
+  let histViewIdx = -1; // -1 表示最新一轮
+
+  function openHistPanel() {
+    if (!rounds.length) {
+      histViewIdx = -1;
+      renderHistContent();
+      histDlg.classList.remove('hidden');
+      return;
+    }
+    histViewIdx = rounds.length - 1; // 默认显示最新已提交轮
+    renderHistContent();
+    histDlg.classList.remove('hidden');
+  }
+
+  function renderHistContent() {
+    const body = document.getElementById('histBody');
+    const nav = document.getElementById('histNav');
+
+    if (!rounds.length) {
+      nav.innerHTML = '';
+      body.innerHTML = '<div class="hist-empty">还没有已提交的轮次</div>';
+      return;
+    }
+
+    // 导航：轮次切换
+    nav.innerHTML = '';
+    rounds.forEach((r, i) => {
+      const b = el('button', 'hist-nav-btn' + (i === histViewIdx ? ' active' : ''));
+      b.textContent = '第 ' + r.round + ' 轮';
+      b.onclick = () => { histViewIdx = i; renderHistContent(); };
+      nav.appendChild(b);
+    });
+
+    const r = rounds[histViewIdx];
+    if (!r) { body.innerHTML = ''; return; }
+
+    // 时间格式化
+    const dt = new Date(r.submittedAt);
+    const dtStr = dt.getFullYear() + '-' + pad2(dt.getMonth() + 1) + '-' + pad2(dt.getDate()) + ' ' + pad2(dt.getHours()) + ':' + pad2(dt.getMinutes());
+
+    body.innerHTML = '';
+
+    // 标头
+    const hdr = el('div', 'hist-hdr');
+    hdr.appendChild(el('span', 'hist-round-tag', '第 ' + r.round + ' 轮'));
+    hdr.appendChild(el('span', 'hist-meta', dtStr + (r.reviewer ? ' · ' + esc(r.reviewer) : '')));
+    body.appendChild(hdr);
+
+    // 总体意见
+    if (r.summary) {
+      const sumBox = el('div', 'hist-summary');
+      sumBox.appendChild(el('div', 'hist-field-label', '总体意见'));
+      sumBox.appendChild(el('div', 'hist-summary-text', esc(r.summary)));
+      body.appendChild(sumBox);
+    }
+
+    // 按 face 分组列出条目
+    if (!r.items || !r.items.length) {
+      body.appendChild(el('div', 'hist-empty', '（本轮无逐条反馈）'));
+      return;
+    }
+
+    const faceOrder = ['prd', 'proto', 'arch', 'test'];
+    const faceNames = { prd: 'PRD', proto: '原型', arch: '架构', test: '测试' };
+    const byFace = {};
+    r.items.forEach(it => {
+      const f = it.face || 'other';
+      if (!byFace[f]) byFace[f] = [];
+      byFace[f].push(it);
+    });
+
+    const allFaces = [...faceOrder.filter(f => byFace[f]), ...Object.keys(byFace).filter(f => !faceOrder.includes(f))];
+    allFaces.forEach(face => {
+      const grp = el('div', 'hist-group');
+      grp.appendChild(el('div', 'hist-group-title', faceNames[face] || face));
+      byFace[face].forEach(it => {
+        const row = el('div', 'hist-item');
+        const left = el('span', 'hist-reflabel', esc(it.refLabel || it.refId));
+        row.appendChild(left);
+        if (it.type === 'move') {
+          row.appendChild(el('span', 'hist-tag hist-tag-move', '🔧 移动'));
+        } else if (it.verdict) {
+          const cls = { 赞成: 'hist-tag-ok', 异议: 'hist-tag-no', 疑问: 'hist-tag-q' }[it.verdict] || '';
+          row.appendChild(el('span', 'hist-tag ' + cls, it.verdict));
+        } else {
+          row.appendChild(el('span', 'hist-tag', '💬'));
+        }
+        if (it.comment) row.appendChild(el('span', 'hist-comment', esc(it.comment)));
+        grp.appendChild(row);
+      });
+      body.appendChild(grp);
+    });
+  }
+
+  function pad2(n) { return String(n).padStart(2, '0'); }
+
+  document.getElementById('histClose').onclick = () => histDlg.classList.add('hidden');
+  document.getElementById('histBtn').onclick = openHistPanel;
+
   // ---------- 提交 ----------
   const dlg = document.getElementById('submitDialog');
   document.getElementById('submitBtn').onclick = () => {
     document.getElementById('reviewerName').value = fb.reviewer || '';
+    // 总体意见框始终从 fb.summary 读取（重置后为空）
     document.getElementById('summaryText').value = fb.summary || '';
-    renderSummList(); dlg.classList.remove('hidden');
+    renderSummList();
+    renderLastRoundInDlg();
+    dlg.classList.remove('hidden');
   };
   document.getElementById('cancelSubmit').onclick = () => dlg.classList.add('hidden');
+  // 清空本轮（不提交、不归档）：用于丢弃当前未提交的输入，回到干净状态
+  const clearBtn = document.getElementById('clearRoundBtn');
+  if (clearBtn) clearBtn.onclick = () => {
+    if (!confirm('清空本轮所有未提交的态度/评论/移动与总体意见？（不影响已提交的历史轮次）')) return;
+    fb.verdicts = {}; fb.comments = []; fb.moves = {}; fb.summary = '';
+    const s = document.getElementById('summaryText'); if (s) s.value = '';
+    saveFb(); render(); renderSummList(); toast('本轮已清空 ✓');
+  };
   document.getElementById('reviewerName').oninput = (e) => { fb.reviewer = e.target.value; saveFb(); };
   document.getElementById('summaryText').oninput = (e) => { fb.summary = e.target.value; saveFb(); };
+
+  // 在提交弹窗中渲染上一轮只读区域
+  function renderLastRoundInDlg() {
+    const box = document.getElementById('lastRoundBox');
+    if (!box) return;
+    if (!rounds.length) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    const r = rounds[rounds.length - 1];
+    const dt = new Date(r.submittedAt);
+    const dtStr = dt.getFullYear() + '-' + pad2(dt.getMonth() + 1) + '-' + pad2(dt.getDate()) + ' ' + pad2(dt.getHours()) + ':' + pad2(dt.getMinutes());
+    const det = box.querySelector('details');
+    const summary = box.querySelector('summary');
+    if (summary) summary.textContent = '第 ' + r.round + ' 轮已提交（' + dtStr + '）— 展开查看';
+    const content = box.querySelector('.last-round-content');
+    if (!content) return;
+    content.innerHTML = '';
+    if (r.summary) {
+      const s = el('div', 'hist-summary');
+      s.appendChild(el('div', 'hist-field-label', '总体意见'));
+      s.appendChild(el('div', 'hist-summary-text', esc(r.summary)));
+      content.appendChild(s);
+    }
+    if (!r.items || !r.items.length) {
+      content.appendChild(el('div', 'hist-empty', '（无逐条记录）'));
+      return;
+    }
+    r.items.forEach(it => {
+      const row = el('div', 'hist-item');
+      row.appendChild(el('span', 'hist-reflabel', esc(it.refLabel || it.refId)));
+      if (it.type === 'move') {
+        row.appendChild(el('span', 'hist-tag hist-tag-move', '🔧'));
+      } else if (it.verdict) {
+        const cls = { 赞成: 'hist-tag-ok', 异议: 'hist-tag-no', 疑问: 'hist-tag-q' }[it.verdict] || '';
+        row.appendChild(el('span', 'hist-tag ' + cls, it.verdict));
+      } else {
+        row.appendChild(el('span', 'hist-tag', '💬'));
+      }
+      if (it.comment) row.appendChild(el('span', 'hist-comment', esc(it.comment)));
+      content.appendChild(row);
+    });
+  }
+
   function buildPayload() {
     const items = [];
     const vm = { ok: '赞成', no: '异议', q: '疑问' };
@@ -449,20 +615,42 @@
       const r = await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const j = await r.json();
       if (!j.ok) throw new Error(j.error || 'fail');
-      // 提交成功后清空"总体意见"，避免下一轮重复提交旧总评（逐条态度仍保留，只改动新内容即可）
-      fb.summary = '';
-      const sumEl = document.getElementById('summaryText'); if (sumEl) sumEl.value = '';
+
+      // 归档本轮到 rounds
+      const roundEntry = {
+        round: rounds.length + 1,
+        submittedAt: new Date().toISOString(),
+        reviewer: payload.reviewer,
+        summary: payload.summary,
+        items: payload.items
+      };
+      rounds.push(roundEntry);
+      saveRounds();
+
+      // 清空工作集 fb（reviewer 保留）
+      const savedReviewer = fb.reviewer;
+      fb.verdicts = {}; fb.comments = []; fb.moves = {}; fb.summary = '';
+      fb.reviewer = savedReviewer;
       saveFb();
+
+      // 刷新提交弹窗内的输入框
+      const sumEl = document.getElementById('summaryText'); if (sumEl) sumEl.value = '';
+
       // 强化成功态：显示条数 + 来源确认
-      const successMsg = '已提交 ' + j.count + ' 条反馈，已存到服务器 ✓（总体意见已清空，下轮只写新意见即可）';
+      const successMsg = '已提交 ' + j.count + ' 条（第 ' + roundEntry.round + ' 轮）✓ 下一轮已重置';
       const successEl = document.getElementById('submitSuccess');
       if (successEl) {
         successEl.textContent = successMsg;
         successEl.style.display = 'block';
-        setTimeout(() => { successEl.style.display = 'none'; dlg.classList.add('hidden'); }, 2500);
+        setTimeout(() => {
+          successEl.style.display = 'none';
+          dlg.classList.add('hidden');
+          render(); // 重渲染当前面，使 defaultVerdict 仍显示
+        }, 2500);
       } else {
         toast(successMsg);
         dlg.classList.add('hidden');
+        render();
       }
     } catch (e) { downloadPayload(payload); toast('未连到服务器：已导出反馈文件，请发回'); dlg.classList.add('hidden'); }
   };
@@ -471,5 +659,6 @@
   ensureInteract();
   updateCount();
   updateTabBadges();
+  updateRoundLabel();
   setTab('prd');
 })();

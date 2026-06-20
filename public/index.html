@@ -11,12 +11,14 @@
 <body class="mode-proto-preview">
   <header class="topbar">
     <div class="brand">📋 PRD 确认工作台 <small id="projTitle"></small></div>
+    <span class="round-label" id="roundLabel">第 1 轮</span>
     <div class="spacer"></div>
     <div class="modes" id="protoModes" style="display:none">
       <button data-mode="preview" class="active">预览</button>
       <button data-mode="edit">编辑</button>
       <button data-mode="annotate">批注</button>
     </div>
+    <button class="iconbtn" id="histBtn" title="查看历史轮次">📜</button>
     <button class="iconbtn" id="themeBtn" title="切换主题">🌙</button>
     <button class="primary" id="submitBtn">提交反馈 <span class="badge" id="fbCount">0</span></button>
   </header>
@@ -46,15 +48,38 @@
     <div class="sheet">
       <h3>提交反馈</h3>
       <p class="sub">所有意见会打包发回给 AI，用于据反馈迭代规格。</p>
+
+      <!-- 上一轮只读区（有历史时显示） -->
+      <div class="last-round-box" id="lastRoundBox" style="display:none">
+        <details class="fold last-round-details">
+          <summary>上一轮已提交 — 展开查看</summary>
+          <div class="last-round-content"></div>
+        </details>
+      </div>
+
+      <!-- 本轮新意见 -->
       <div class="field"><label>你的名字（可选）</label><input id="reviewerName" placeholder="Michael"></div>
-      <div class="field"><label>总体意见（可选）</label><textarea id="summaryText" rows="2" placeholder="一句话总评…"></textarea></div>
-      <div class="field"><label>本次反馈清单</label><div class="summList" id="summList"></div></div>
+      <div class="field"><label>本轮总体意见（可选）</label><textarea id="summaryText" rows="2" placeholder="一句话总评…"></textarea></div>
+      <div class="field"><label>本轮反馈清单</label><div class="summList" id="summList"></div></div>
       <div class="btnrow">
         <button class="primary" id="doSubmit">确认提交</button>
         <button class="ghost" id="downloadBtn">导出文件</button>
+        <button class="ghost" id="clearRoundBtn">🗑 清空本轮</button>
         <button class="ghost" id="cancelSubmit">返回</button>
       </div>
       <div class="submit-success" id="submitSuccess"></div>
+    </div>
+  </div>
+
+  <!-- 历史轮次面板 -->
+  <div class="modal hidden" id="histDialog">
+    <div class="sheet hist-sheet">
+      <div class="hist-header-row">
+        <h3>历史提交轮次</h3>
+        <button class="ghost hist-close-btn" id="histClose">✕ 关闭</button>
+      </div>
+      <div class="hist-nav" id="histNav"></div>
+      <div class="hist-body" id="histBody"></div>
     </div>
   </div>
 
