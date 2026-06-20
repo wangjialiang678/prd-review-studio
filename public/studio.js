@@ -449,8 +449,12 @@
       const r = await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const j = await r.json();
       if (!j.ok) throw new Error(j.error || 'fail');
+      // 提交成功后清空"总体意见"，避免下一轮重复提交旧总评（逐条态度仍保留，只改动新内容即可）
+      fb.summary = '';
+      const sumEl = document.getElementById('summaryText'); if (sumEl) sumEl.value = '';
+      saveFb();
       // 强化成功态：显示条数 + 来源确认
-      const successMsg = '已提交 ' + j.count + ' 条反馈，已存到服务器 ✓';
+      const successMsg = '已提交 ' + j.count + ' 条反馈，已存到服务器 ✓（总体意见已清空，下轮只写新意见即可）';
       const successEl = document.getElementById('submitSuccess');
       if (successEl) {
         successEl.textContent = successMsg;
