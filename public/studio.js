@@ -15,17 +15,86 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
   function faceHead(t, d) { const h = el('div', 'faceHead'); h.appendChild(el('h1', null, esc(t))); if (d) h.appendChild(el('p', null, esc(d))); return h; }
 
+  // ---------- toast ----------
+  function toast(m) { const t = el('div', 'toast', esc(m)); document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
+  function toastSaved() { toast('已保存 ✓'); }
+
   // ---------- feedback state ----------
   let fb = {};
   try { fb = JSON.parse(localStorage.getItem(LSK + ':fb')) || {}; } catch (e) { }
   fb.verdicts = fb.verdicts || {}; fb.comments = fb.comments || []; fb.moves = fb.moves || {};
-  function saveFb() { localStorage.setItem(LSK + ':fb', JSON.stringify(fb)); updateCount(); }
+  function saveFb() { localStorage.setItem(LSK + ':fb', JSON.stringify(fb)); updateCount(); updateTabBadges(); }
+  function saveFbWithToast() { saveFb(); toastSaved(); }
+
+  // ---------- count helpers ----------
+  // 判断某条 verdict 是否"已填"（含 defaultVerdict 语义）
+  function isVerdictFilled(refId, defaultVerdict) {
+    const v = fb.verdicts[refId];
+    if (v && (v.verdict || v.comment)) return true;
+    if (!v && defaultVerdict) return true; // 有默认值视为已填
+    return false;
+  }
+
+  // 统计各 face 已填条数（用于角标）
+  function countByFace() {
+    const counts = { prd: 0, proto: 0, arch: 0, test: 0 };
+    // verdicts
+    for (const k in fb.verdicts) {
+      const v = fb.verdicts[k];
+      if (v && (v.verdict || v.comment) && v.face) counts[v.face] = (counts[v.face] || 0) + 1;
+    }
+    // 原型：defaultVerdict 不参与 proto 计数，仅计真实操作
+    // 评论（proto）
+    counts.proto += fb.comments.length;
+    counts.proto += Object.keys(fb.moves).length;
+    // PRD defaultVerdict 计入
+    if (D.prd) {
+      D.prd.sections.forEach(sec => sec.items.forEach(it => {
+        if (!fb.verdicts[it.id] && it.defaultVerdict) counts.prd++;
+      }));
+    }
+    // arch defaultVerdict
+    if (D.arch) {
+      D.arch.assertions.forEach(a => {
+        if (!fb.verdicts['arch-' + a.id] && a.defaultVerdict) counts.arch++;
+      });
+      D.arch.diagrams.forEach((dg, i) => {
+        if (!fb.verdicts['arch-dg-' + (dg.id || i)] && dg.defaultVerdict) counts.arch++;
+      });
+    }
+    // test defaultVerdict
+    if (D.test) {
+      D.test.scenarios.forEach(sc => { if (!fb.verdicts['test-' + sc.id] && sc.defaultVerdict) counts.test++; });
+      D.test.cases.forEach(tc => { if (!fb.verdicts['case-' + tc.id] && tc.defaultVerdict) counts.test++; });
+    }
+    return counts;
+  }
+
   function countFb() {
     let n = 0;
     for (const k in fb.verdicts) { const v = fb.verdicts[k]; if (v && (v.verdict || v.comment)) n++; }
-    n += fb.comments.length; n += Object.keys(fb.moves).length; return n;
+    n += fb.comments.length; n += Object.keys(fb.moves).length;
+    return n;
   }
   function updateCount() { document.getElementById('fbCount').textContent = countFb(); }
+
+  // 更新各 tab 角标
+  function updateTabBadges() {
+    const counts = countByFace();
+    const tabMap = { prd: 'prd', proto: 'proto', arch: 'arch', test: 'test' };
+    for (const face in tabMap) {
+      const btn = document.querySelector('#tabs button[data-tab="' + face + '"]');
+      if (!btn) continue;
+      let badge = btn.querySelector('.tab-badge');
+      const n = counts[face] || 0;
+      if (n > 0) {
+        if (!badge) { badge = el('span', 'tab-badge'); btn.appendChild(badge); }
+        badge.textContent = n;
+      } else {
+        if (badge) badge.remove();
+      }
+    }
+  }
 
   // ---------- theme ----------
   const themeBtn = document.getElementById('themeBtn');
@@ -34,16 +103,50 @@
   themeBtn.onclick = () => applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
 
   // ---------- verdict control (复用于 PRD / 架构 / 测试) ----------
-  function verdictCtl(refId, refLabel, face) {
+  // item 可选字段：defaultVerdict: 'ok'|'no'|'q'，important: true
+  function verdictCtl(refId, refLabel, face, item) {
+    item = item || {};
+    const defaultV = item.defaultVerdict || null;
+    const important = !!item.important;
+
     const wrap = el('div');
+
+    // important 标签
+    if (important) {
+      wrap.appendChild(el('span', 'important-tag', '需确认'));
+    }
+
     const cur = fb.verdicts[refId] || {};
+    // 有效态度：用户实际选择 > defaultVerdict
+    const effectiveVerdict = cur.verdict || (cur.verdict === null ? null : defaultV);
+
     const row = el('div', 'verdict');
     [['ok', '✓ 赞成'], ['no', '✗ 异议'], ['q', '? 疑问']].forEach(([v, label]) => {
-      const b = el('button', 'vbtn' + (cur.verdict === v ? ' on' : '')); b.dataset.v = v; b.textContent = label;
+      const isActive = effectiveVerdict === v;
+      const isDefault = !cur.verdict && defaultV === v;
+      const b = el('button', 'vbtn' + (isActive ? ' on' : '') + (isDefault ? ' default-active' : ''));
+      b.dataset.v = v; b.textContent = label;
+      if (isDefault && !cur.verdict) {
+        b.appendChild(el('span', 'default-hint', '默认'));
+      }
       b.onclick = () => {
-        const c = fb.verdicts[refId] || {}; c.verdict = (c.verdict === v ? null : v); c.refLabel = refLabel; c.face = face;
-        fb.verdicts[refId] = c; saveFb();
-        [...row.children].forEach(x => x.classList.toggle('on', x.dataset.v === c.verdict));
+        const c = fb.verdicts[refId] || {};
+        c.verdict = (c.verdict === v ? null : v);
+        c.refLabel = refLabel; c.face = face;
+        fb.verdicts[refId] = c;
+        saveFb();
+        toastSaved();
+        // 重新渲染按钮状态
+        const newEffective = c.verdict || (c.verdict === null ? null : defaultV);
+        [...row.children].forEach(x => {
+          const isNowActive = x.dataset.v === newEffective;
+          const isNowDefault = !c.verdict && defaultV === x.dataset.v;
+          x.className = 'vbtn' + (isNowActive ? ' on' : '') + (isNowDefault ? ' default-active' : '');
+          // 移除旧 default-hint，按需加
+          const oldHint = x.querySelector('.default-hint');
+          if (oldHint) oldHint.remove();
+          if (isNowDefault && !c.verdict) x.appendChild(el('span', 'default-hint', '默认'));
+        });
         ta.classList.toggle('show', !!(c.verdict === 'no' || c.verdict === 'q' || c.comment));
       };
       row.appendChild(b);
@@ -51,9 +154,31 @@
     wrap.appendChild(row);
     const ta = el('textarea', 'cmt' + ((cur.verdict === 'no' || cur.verdict === 'q' || cur.comment) ? ' show' : ''));
     ta.placeholder = '补充说明（异议/疑问/想改成…）'; ta.value = cur.comment || '';
-    ta.oninput = () => { const c = fb.verdicts[refId] || {}; c.comment = ta.value.trim() || null; c.refLabel = refLabel; c.face = face; fb.verdicts[refId] = c; saveFb(); };
+    ta.oninput = () => {
+      const c = fb.verdicts[refId] || {};
+      c.comment = ta.value.trim() || null; c.refLabel = refLabel; c.face = face;
+      fb.verdicts[refId] = c; saveFb();
+    };
+    ta.onblur = () => { if (ta.value.trim()) toastSaved(); };
     wrap.appendChild(ta);
     return wrap;
+  }
+
+  // ---------- 分块保存按钮 ----------
+  function makePartialSaveBtn(face) {
+    const btn = el('button', 'partial-save-btn', '✓ 保存本块');
+    btn.onclick = async () => {
+      const payload = buildPayload();
+      payload.partial = true;
+      payload.face = face;
+      try {
+        const r = await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || 'fail');
+        toast('本块已保存到服务器 ✓');
+      } catch (e) { toast('本块已保存 ✓（服务器未连接，已存本地）'); }
+    };
+    return btn;
   }
 
   // ---------- tabs & modes ----------
@@ -82,17 +207,19 @@
     const root = el('div');
     root.appendChild(faceHead('PRD 评审', D.prd.intro));
     root.appendChild(el('div', 'legend', '逐条给态度：✓赞成 / ✗异议 / ?疑问，可写补充。异议和疑问会自动展开输入框。'));
+    root.appendChild(makePartialSaveBtn('prd'));
     D.prd.sections.forEach(sec => {
       const s = el('div', 'section');
       s.appendChild(el('h2', null, esc(sec.title) + (sec.tag ? ` <span class="tag">${esc(sec.tag)}</span>` : '')));
       sec.items.forEach(it => {
-        const c = el('div', 'card');
+        const c = el('div', 'card' + (it.important ? ' card-important' : ''));
+        if (it.important) { c.appendChild(el('div', 'important-bar')); }
         c.appendChild(el('div', 'cid', esc(it.cid || it.id)));
         if (it.title) c.appendChild(el('div', 'ctitle', esc(it.title)));
         if (it.body) c.appendChild(el('div', 'cbody', esc(it.body)));
         if (it.list) { const ul = el('ul'); it.list.forEach(li => ul.appendChild(el('li', null, esc(li)))); c.appendChild(ul); }
         if (it.ac) { const acd = el('div', 'ac'); acd.innerHTML = '<b>验收标准</b>'; it.ac.forEach(a => acd.appendChild(el('div', null, '• ' + esc(a)))); c.appendChild(acd); }
-        c.appendChild(verdictCtl(it.id, it.cid || it.id, 'prd'));
+        c.appendChild(verdictCtl(it.id, it.cid || it.id, 'prd', it));
         s.appendChild(c);
       });
       root.appendChild(s);
@@ -171,15 +298,26 @@
     const root = el('div');
     root.appendChild(faceHead('架构确认', D.arch.intro));
     root.appendChild(el('div', 'legend', '看图 + 逐条勾"符合/不符合"。不必懂符号，只判断描述是否符合你的预期。'));
+    root.appendChild(makePartialSaveBtn('arch'));
     D.arch.diagrams.forEach((dg, i) => {
       const s = el('div', 'section');
       s.appendChild(el('h2', null, esc(dg.title)));
       const box = el('div', 'diagram');
       box.innerHTML = '<pre class="mermaid">' + esc(dg.mermaid) + '</pre>';
       s.appendChild(box);
-      const c = el('div', 'card');
+
+      // rationale 折叠说明（可选字段）
+      if (dg.rationale) {
+        const det = el('details', 'fold rationale-fold');
+        det.appendChild(el('summary', null, '💡 原理说明（展开）'));
+        det.appendChild(el('div', 'rationale-body', esc(dg.rationale)));
+        s.appendChild(det);
+      }
+
+      const c = el('div', 'card' + (dg.important ? ' card-important' : ''));
+      if (dg.important) c.appendChild(el('div', 'important-bar'));
       c.appendChild(el('div', 'cid', '对这张图的意见'));
-      c.appendChild(verdictCtl('arch-dg-' + (dg.id || i), '图：' + dg.title, 'arch'));
+      c.appendChild(verdictCtl('arch-dg-' + (dg.id || i), '图：' + dg.title, 'arch', dg));
       s.appendChild(c);
       root.appendChild(s);
     });
@@ -187,12 +325,32 @@
     sa.appendChild(el('h2', null, '关键断言逐条确认 <span class="tag">断言</span>'));
     const card = el('div', 'card');
     D.arch.assertions.forEach(a => {
-      const block = el('div', 'assert'); block.style.flexDirection = 'column';
+      const block = el('div', 'assert' + (a.important ? ' assert-important' : '')); block.style.flexDirection = 'column';
+      if (a.important) { const bar = el('div', 'important-bar assert-bar'); block.appendChild(bar); }
       block.appendChild(el('div', 'atext', '<b>' + esc(a.id) + '</b> ' + esc(a.text)));
-      block.appendChild(verdictCtl('arch-' + a.id, a.id, 'arch'));
+      block.appendChild(verdictCtl('arch-' + a.id, a.id, 'arch', a));
       card.appendChild(block);
     });
     sa.appendChild(card); root.appendChild(sa);
+
+    // 备选方案对比（可选字段 arch.alternatives）
+    if (D.arch.alternatives && D.arch.alternatives.length) {
+      const salt = el('div', 'section');
+      salt.appendChild(el('h2', null, '备选方案对比 <span class="tag">架构决策</span>'));
+      const altGrid = el('div', 'alt-grid');
+      D.arch.alternatives.forEach(alt => {
+        const ac = el('div', 'alt-card' + (alt.chosen ? ' alt-chosen' : ''));
+        const header = el('div', 'alt-header');
+        header.appendChild(el('span', 'alt-title', esc(alt.title)));
+        if (alt.chosen) header.appendChild(el('span', 'alt-chosen-tag', '✓ 选定'));
+        ac.appendChild(header);
+        ac.appendChild(el('div', 'alt-desc', esc(alt.desc)));
+        altGrid.appendChild(ac);
+      });
+      salt.appendChild(altGrid);
+      root.appendChild(salt);
+    }
+
     view.replaceChildren(root);
     try {
       mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default' });
@@ -205,21 +363,24 @@
   function renderTest() {
     const root = el('div');
     root.appendChild(faceHead('测试场景确认', D.test.intro));
+    root.appendChild(makePartialSaveBtn('test'));
     const s1 = el('div', 'section');
     s1.appendChild(el('h2', null, '关键场景 <span class="tag">逐条确认</span>'));
     D.test.scenarios.forEach(sc => {
-      const c = el('div', 'card');
+      const c = el('div', 'card' + (sc.important ? ' card-important' : ''));
+      if (sc.important) c.appendChild(el('div', 'important-bar'));
       c.appendChild(el('div', 'ctitle', esc(sc.name)));
       c.appendChild(el('div', 'cbody', '预期：' + esc(sc.expect)));
       if (sc.impact) { const im = el('div', 'ac'); im.innerHTML = '<b style="color:var(--bad)">若不处理：</b>' + esc(sc.impact); c.appendChild(im); }
-      c.appendChild(verdictCtl('test-' + sc.id, sc.name, 'test'));
+      c.appendChild(verdictCtl('test-' + sc.id, sc.name, 'test', sc));
       s1.appendChild(c);
     });
     root.appendChild(s1);
     const s2 = el('div', 'section');
     s2.appendChild(el('h2', null, '验收标准 ↔ 用例 <span class="tag">AC</span>'));
     D.test.cases.forEach(tc => {
-      const c = el('div', 'card');
+      const c = el('div', 'card' + (tc.important ? ' card-important' : ''));
+      if (tc.important) c.appendChild(el('div', 'important-bar'));
       c.appendChild(el('div', 'cid', esc(tc.id) + (tc.fr ? (' · ' + esc(tc.fr)) : '')));
       c.appendChild(el('div', 'ctitle', esc(tc.title)));
       if (tc.gherkin) {
@@ -228,7 +389,7 @@
         d.appendChild(el('div', 'gherkin', hl(tc.gherkin)));
         c.appendChild(d);
       }
-      c.appendChild(verdictCtl('case-' + tc.id, tc.id, 'test'));
+      c.appendChild(verdictCtl('case-' + tc.id, tc.id, 'test', tc));
       s2.appendChild(c);
     });
     root.appendChild(s2);
@@ -250,7 +411,7 @@
     const txt = document.getElementById('popText').value.trim();
     if (popCtx.id) { const c = fb.comments.find(x => x.id === popCtx.id); if (c) { if (txt) c.comment = txt; else fb.comments = fb.comments.filter(x => x.id !== popCtx.id); } }
     else if (txt) { fb.comments.push({ id: 'c' + Date.now() + Math.floor(Math.random() * 1e4), face: popCtx.face, screenId: popCtx.screenId, xPct: popCtx.xPct, yPct: popCtx.yPct, refLabel: popCtx.refLabel, comment: txt }); }
-    saveFb(); pop.classList.add('hidden'); if (curTab === 'proto') renderProto();
+    saveFb(); toastSaved(); pop.classList.add('hidden'); if (curTab === 'proto') renderProto();
   };
   document.getElementById('popDelete').onclick = () => { if (popCtx && popCtx.id) { fb.comments = fb.comments.filter(x => x.id !== popCtx.id); saveFb(); } pop.classList.add('hidden'); if (curTab === 'proto') renderProto(); };
   document.getElementById('popCancel').onclick = () => pop.classList.add('hidden');
@@ -279,7 +440,6 @@
     box.innerHTML = '';
     p.items.forEach(it => { const tag = it.type === 'move' ? '🔧移动' : (it.verdict ? ('[' + it.verdict + ']') : '💬'); box.appendChild(el('div', null, esc(tag + ' ' + (it.refLabel || it.refId) + (it.comment ? (' — ' + it.comment) : '')))); });
   }
-  function toast(m) { const t = el('div', 'toast', esc(m)); document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
   function downloadPayload(p) { const b = new Blob([JSON.stringify(p, null, 2)], { type: 'application/json' }); const a = el('a'); a.href = URL.createObjectURL(b); a.download = D.id + '-feedback.json'; a.click(); }
   document.getElementById('downloadBtn').onclick = () => downloadPayload(buildPayload());
   document.getElementById('doSubmit').onclick = async () => {
@@ -289,12 +449,23 @@
       const r = await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const j = await r.json();
       if (!j.ok) throw new Error(j.error || 'fail');
-      toast('已提交 ' + j.count + ' 条反馈 ✓'); dlg.classList.add('hidden');
+      // 强化成功态：显示条数 + 来源确认
+      const successMsg = '已提交 ' + j.count + ' 条反馈，已存到服务器 ✓';
+      const successEl = document.getElementById('submitSuccess');
+      if (successEl) {
+        successEl.textContent = successMsg;
+        successEl.style.display = 'block';
+        setTimeout(() => { successEl.style.display = 'none'; dlg.classList.add('hidden'); }, 2500);
+      } else {
+        toast(successMsg);
+        dlg.classList.add('hidden');
+      }
     } catch (e) { downloadPayload(payload); toast('未连到服务器：已导出反馈文件，请发回'); dlg.classList.add('hidden'); }
   };
 
   // ---------- init ----------
   ensureInteract();
   updateCount();
+  updateTabBadges();
   setTab('prd');
 })();

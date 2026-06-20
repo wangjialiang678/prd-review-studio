@@ -1,18 +1,38 @@
 /* 示例项目数据（开源 demo）。复制本文件为 projects/<你的项目>.js 改内容，
- * 然后用 ?p=<你的项目> 打开即可评审。数据结构见下方注释。 */
+ * 然后用 ?p=<你的项目> 打开即可评审。数据结构见下方注释。
+ *
+ * 新支持字段（均可选、向后兼容）：
+ *  - items[].defaultVerdict: 'ok'|'no'|'q'  用户未操作时视为此态度（计入进度、按钮浅色高亮）
+ *  - items[].important: true                 视觉重点高亮（左侧橙色条 + "需确认"标签）
+ *  - arch.diagrams[].rationale: string       图下方折叠"💡 原理说明"
+ *  - arch.diagrams[].defaultVerdict / .important  同上
+ *  - arch.assertions[].defaultVerdict / .important 同上
+ *  - arch.alternatives: [{id,title,desc,chosen}]  备选方案对比卡片
+ *  - test.scenarios[].defaultVerdict / .important  同上
+ *  - test.cases[].defaultVerdict / .important       同上
+ */
 window.PROJECT_DATA = {
   id: 'demo',
   title: '示例 · 待办清单 App',
 
   // ① PRD：sections[].items[] 每条可被逐条评审（赞成/异议/疑问 + 评论）
+  //    可选：defaultVerdict:'ok'|'no'|'q'（默认态度）、important:true（重点高亮）
   prd: {
     intro: '一个极简待办 App 的示例 PRD，用来演示这个确认工作台的 4 个面。',
     sections: [
       {
         title: '核心决策', tag: '基线',
         items: [
-          { id: 'D1', cid: '决策 D1', title: '本地优先、无需登录', body: '数据存本地，首次打开即可用，不强制注册。' },
-          { id: 'D2', cid: '决策 D2', title: '跨设备同步为可选', body: 'MVP 不做云同步；后续作为可选项。' },
+          {
+            id: 'D1', cid: '决策 D1', title: '本地优先、无需登录',
+            body: '数据存本地，首次打开即可用，不强制注册。',
+            defaultVerdict: 'ok'   // 演示：默认赞成，按钮浅绿高亮并标"默认"，可改
+          },
+          {
+            id: 'D2', cid: '决策 D2', title: '跨设备同步为可选',
+            body: 'MVP 不做云同步；后续作为可选项。',
+            important: true        // 演示：重点高亮，左侧橙条 + "需确认"标签
+          },
         ]
       },
       {
@@ -20,7 +40,11 @@ window.PROJECT_DATA = {
         items: [
           { id: 'FR-1', cid: 'FR-1', title: '新建待办', body: '一行输入即可新建；回车快速连续添加。', ac: ['空输入不创建', '新建后输入框保持聚焦'] },
           { id: 'FR-2', cid: 'FR-2', title: '完成 / 删除', body: '点击勾选完成；左滑删除。', ac: ['完成项有明显视觉区分', '删除有撤销机会'] },
-          { id: 'FR-3', cid: 'FR-3', title: '按状态筛选', body: '全部 / 未完成 / 已完成 三个筛选。', ac: ['切换筛选即时生效'] },
+          {
+            id: 'FR-3', cid: 'FR-3', title: '按状态筛选',
+            body: '全部 / 未完成 / 已完成 三个筛选。', ac: ['切换筛选即时生效'],
+            important: true, defaultVerdict: 'q'  // 演示：重点 + 默认疑问
+          },
         ]
       },
     ]
@@ -57,6 +81,7 @@ window.PROJECT_DATA = {
   },
 
   // ③ 架构：diagrams[].mermaid（Mermaid 语法）+ assertions[] 逐条勾"符合/不符合"
+  //    新增可选：diagrams[].rationale（原理说明折叠）、arch.alternatives（备选方案对比）
   arch: {
     intro: '看图 + 逐条确认断言是否符合预期。',
     diagrams: [
@@ -66,12 +91,21 @@ window.PROJECT_DATA = {
   UI["Compose UI"] --> VM["ViewModel StateFlow"]
   VM --> Repo["Repository"]
   Repo --> DB["Room 本地数据库"]
-  Repo -.可选.-> Sync["云同步 后续"]`
+  Repo -.可选.-> Sync["云同步 后续"]`,
+        // 演示：给技术小白的原理说明，折叠展示
+        rationale: '界面（UI）产生操作事件，交给 ViewModel 处理业务逻辑；ViewModel 通过 Repository 读写数据库，不直接接触底层；数据库选用 Room（SQLite 封装），数据只存本地，无需联网。虚线表示云同步是未来可选功能，MVP 不做。',
+        defaultVerdict: 'ok'  // 演示：图默认赞成
       },
     ],
     assertions: [
-      { id: 'A1', text: '数据只存本地 Room，无需联网即可用。' },
-      { id: 'A2', text: '云同步是后续可选项，不在 MVP。' },
+      { id: 'A1', text: '数据只存本地 Room，无需联网即可用。', defaultVerdict: 'ok' },
+      { id: 'A2', text: '云同步是后续可选项，不在 MVP。', important: true },  // 演示：重点断言
+    ],
+    // 演示：备选方案对比，chosen:true 标"✓ 选定"
+    alternatives: [
+      { id: 'alt-room', title: 'Room（SQLite）', desc: '官方 Android 持久化方案，成熟稳定，无需网络，查询灵活。', chosen: true },
+      { id: 'alt-datastore', title: 'DataStore', desc: '适合简单键值对，不支持复杂查询，不适合列表型待办。', chosen: false },
+      { id: 'alt-firebase', title: 'Firebase Firestore', desc: '云端实时同步，但强依赖网络，违背本地优先原则。', chosen: false },
     ]
   },
 
@@ -79,12 +113,12 @@ window.PROJECT_DATA = {
   test: {
     intro: '关键场景 + 验收标准用例示例。',
     scenarios: [
-      { id: 'S1', name: '无网络打开', impact: '断网就打不开会很糟', expect: '断网也能正常增删改查本地待办' },
-      { id: 'S2', name: '误删恢复', impact: '误删任务无法找回', expect: '删除后短时间内可撤销' },
+      { id: 'S1', name: '无网络打开', impact: '断网就打不开会很糟', expect: '断网也能正常增删改查本地待办', defaultVerdict: 'ok' },
+      { id: 'S2', name: '误删恢复', impact: '误删任务无法找回', expect: '删除后短时间内可撤销', important: true },
     ],
     cases: [
       { id: 'AC2.2', fr: 'FR-2', title: '删除可撤销', gherkin: '假设 列表里有一条待办\n当 用户删除它\n那么 顶部出现"已删除 · 撤销"提示\n并且 点撤销后该待办恢复' },
-      { id: 'AC3.1', fr: 'FR-3', title: '筛选即时生效', gherkin: '假设 同时有已完成和未完成项\n当 切换到"未完成"筛选\n那么 只显示未完成项' },
+      { id: 'AC3.1', fr: 'FR-3', title: '筛选即时生效', gherkin: '假设 同时有已完成和未完成项\n当 切换到"未完成"筛选\n那么 只显示未完成项', important: true, defaultVerdict: 'q' },
     ]
   },
 };
