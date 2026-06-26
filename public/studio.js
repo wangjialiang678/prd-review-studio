@@ -245,7 +245,7 @@
         if (it.important) { c.appendChild(el('div', 'important-bar')); }
         c.appendChild(el('div', 'cid', esc(it.cid || it.id)));
         if (it.title) c.appendChild(el('div', 'ctitle', esc(it.title)));
-        if (it.body) c.appendChild(el('div', 'cbody', esc(it.body)));
+        if (it.body) c.appendChild(el('div', 'cbody', esc(it.body).replace(/\n/g, '<br>')));
         if (it.list) { const ul = el('ul'); it.list.forEach(li => ul.appendChild(el('li', null, esc(li)))); c.appendChild(ul); }
         if (it.ac) { const acd = el('div', 'ac'); acd.innerHTML = '<b>验收标准</b>'; it.ac.forEach(a => acd.appendChild(el('div', null, '• ' + esc(a)))); c.appendChild(acd); }
         c.appendChild(verdictCtl(it.id, it.cid || it.id, 'prd', it));
@@ -502,7 +502,7 @@
         if (it.important) c.appendChild(el('div', 'important-bar'));
         c.appendChild(el('div', 'cid', esc(it.id)));
         c.appendChild(el('div', 'ctitle', esc(it.label)));
-        if (it.body) c.appendChild(el('div', 'cbody', esc(it.body)));
+        if (it.body) c.appendChild(el('div', 'cbody', esc(it.body).replace(/\n/g, '<br>')));
         if (it.gap) {
           const gd = el('div', 'ac cmp-gap');
           gd.innerHTML = '<b>缺口：</b>' + esc(it.gap);
@@ -510,7 +510,7 @@
         }
         // journey 的 verdict 语义：ok=覆盖 / no=明确不做 / q=待定
         const journeyItem = Object.assign({}, it, { defaultVerdict: it.defaultVerdict || null });
-        const vc = verdictCtlCustom('cmp-j-' + it.id, it.id + ' ' + it.label, 'completeness', journeyItem, [['ok', '覆盖'], ['no', '明确不做'], ['q', '待定']]);
+        const vc = verdictCtlCustom('cmp-j-' + it.id, it.id + ' ' + it.label, 'completeness', journeyItem, [['ok', '已覆盖'], ['no', '明确不做'], ['q', '待定']]);
         c.appendChild(vc);
         s.appendChild(c);
       });
@@ -569,14 +569,14 @@
         if (it.important) c.appendChild(el('div', 'important-bar'));
         c.appendChild(el('div', 'cid', esc(it.id)));
         c.appendChild(el('div', 'ctitle', esc(it.title)));
-        if (it.body) c.appendChild(el('div', 'cbody', esc(it.body)));
+        if (it.body) c.appendChild(el('div', 'cbody', esc(it.body).replace(/\n/g, '<br>')));
         if (it.risk) {
           const rd = el('div', 'ac');
           rd.innerHTML = '<b style="color:var(--bad)">风险：</b>' + esc(it.risk);
           c.appendChild(rd);
         }
         // verdict 语义：ok=补需求 / no=删功能 / q=待定
-        const vc = verdictCtlCustom('cmp-wf-' + it.id, it.id + ' ' + it.title, 'completeness', it, [['ok', '补需求'], ['no', '删功能'], ['q', '待定']]);
+        const vc = verdictCtlCustom('cmp-wf-' + it.id, it.id + ' ' + it.title, 'completeness', it, [['ok', '补需求·保留'], ['no', '删功能·移除'], ['q', '待定']]);
         c.appendChild(vc);
         s.appendChild(c);
       });
@@ -602,8 +602,8 @@
         if (it.spec) { const d = el('div', 'cbody'); d.innerHTML = '<b>稿：</b>' + esc(it.spec); c.appendChild(d); }
         if (it.code) { const d = el('div', 'cbody'); d.innerHTML = '<b>代码：</b>' + esc(it.code); c.appendChild(d); }
         if (it.action) { const d = el('div', 'ac'); d.innerHTML = '<b>建议：</b>' + esc(it.action); c.appendChild(d); }
-        // verdict 语义：ok=已对齐 / no=需修改 / q=待定
-        const vc = verdictCtlCustom('cmp-rc-' + it.id, it.id + ' ' + it.title, 'completeness', it, [['ok', '已对齐'], ['no', '需修改'], ['q', '待定']]);
+        // verdict 语义：ok=三方一致·无需改 / no=有冲突·要改 / q=待定
+        const vc = verdictCtlCustom('cmp-rc-' + it.id, it.id + ' ' + it.title, 'completeness', it, [['ok', '三方一致·无需改'], ['no', '有冲突·要改'], ['q', '待定']]);
         c.appendChild(vc);
         s.appendChild(c);
       });
