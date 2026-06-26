@@ -109,6 +109,44 @@ window.PROJECT_DATA = {
     ]
   },
 
+  // ⑥ 交互完整性自查（新面 · 示例）：四组检查项逐条表态
+  //    journey: 用户旅程七段式（覆盖/明确不做/待定）
+  //    frSlots: 每条 FR 的三件套（states/inverseFlow/errorRecovery）
+  //    wildFeatures: 建了但没确认的功能（补需求/删功能/待定）
+  //    reconcile: 稿↔FR↔代码 三方对账（已对齐/需修改/待定）
+  completeness: {
+    note: '示例项目·待办清单 App ── 交互完整性自查演示。',
+    journey: [
+      { id: 'J1', label: '首次使用', body: '安装后引导 → 创建第一条待办。', defaultVerdict: 'ok' },
+      { id: 'J2', label: '日常使用', body: '打开 → 增删改查 → 筛选。', defaultVerdict: 'ok' },
+      { id: 'J3', label: '数据迁移 / 跨设备', body: '换手机时数据如何转移。', gap: 'MVP 未做同步，迁移路径未定义。', defaultVerdict: 'q' },
+    ],
+    frSlots: [
+      {
+        id: 'FR2', fr: 'FR-2', title: '完成 / 删除',
+        states: '完成 ☑ 与未完成 ☐ 有视觉区分',
+        inverseFlow: '删除有撤销（AC 已写）',
+        errorRecovery: '无（本地操作无需）',
+        defaultVerdict: 'ok'
+      },
+      {
+        id: 'FR3', fr: 'FR-3', title: '按状态筛选',
+        states: '全部/未完成/已完成 三态',
+        inverseFlow: null,
+        errorRecovery: '筛选结果为空时的空态未定义',
+        note: '空态（筛选无结果）的界面设计缺失。',
+        defaultVerdict: 'no'
+      },
+    ],
+    wildFeatures: [
+      { id: 'B1', title: '待办详情页', body: '详情页（备注+截止时间）已建原型，但 PRD 无对应 FR。', risk: '功能范围未对齐。' },
+    ],
+    reconcile: [
+      { id: 'RC1', type: 'spec-only', title: '截止时间控件', spec: '详情页原型有「⏰ 周五 18:00」截止时间 pill', code: 'PRD 和代码均无截止时间需求', action: '补 FR 或从原型中移除。' },
+      { id: 'RC2', type: 'mismatch', title: '删除方式', spec: '原型：左滑删除', code: 'AC 写的是"左滑删除"，但无原型验证', action: '确认交互后统一稿和 AC。', defaultVerdict: 'q' },
+    ],
+  },
+
   // ④ 测试：scenarios[]（带 impact 业务影响）+ cases[]（AC + Gherkin）
   test: {
     intro: '关键场景 + 验收标准用例示例。',

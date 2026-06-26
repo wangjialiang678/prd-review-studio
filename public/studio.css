@@ -227,3 +227,19 @@ details.fold[open]>summary:before{content:"▾ "}
 .ui-annot-overlay{position:absolute;inset:0;z-index:10;pointer-events:none}
 /* 批注模式：mode-ui-annotate 下浮层捕获事件（通过 JS 内联 style 控制） */
 .mode-ui-annotate .ui-annot-overlay{cursor:crosshair}
+
+/* 交互完整性自查面 */
+.cmp-hint{font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:10px}
+.cmp-slots{margin:8px 0 4px;display:flex;flex-direction:column;gap:4px}
+.cmp-slot-row{display:flex;align-items:baseline;gap:6px;font-size:13px}
+.cmp-slot-label{color:var(--muted);min-width:5em;flex-shrink:0;font-weight:600}
+.cmp-slot-val{border-radius:20px;padding:2px 8px;font-size:12px;font-weight:700}
+.cmp-ok{background:var(--ok-soft);color:var(--ok)}
+.cmp-miss{background:var(--bad-soft);color:var(--bad)}
+.cmp-gap{color:var(--warn);border-color:var(--warn)}
+.cmp-gap b{color:var(--warn)}
+/* reconcile 类型标签 */
+.cmp-rc-type{display:inline-flex;align-items:center;font-size:11px;font-weight:700;border-radius:20px;padding:2px 8px;margin-bottom:6px}
+.cmp-rc-spec-only{background:var(--warn-soft);color:var(--warn)}
+.cmp-rc-code-only{background:var(--brand-soft);color:var(--brand)}
+.cmp-rc-mismatch{background:var(--bad-soft);color:var(--bad)}

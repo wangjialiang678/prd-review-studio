@@ -49,7 +49,7 @@
 
   // 统计各 face 已填条数（用于角标）
   function countByFace() {
-    const counts = { prd: 0, proto: 0, arch: 0, test: 0, ui: 0 };
+    const counts = { prd: 0, proto: 0, arch: 0, test: 0, ui: 0, completeness: 0 };
     // verdicts
     for (const k in fb.verdicts) {
       const v = fb.verdicts[k];
@@ -82,6 +82,13 @@
       D.test.scenarios.forEach(sc => { if (!fb.verdicts['test-' + sc.id] && sc.defaultVerdict) counts.test++; });
       D.test.cases.forEach(tc => { if (!fb.verdicts['case-' + tc.id] && tc.defaultVerdict) counts.test++; });
     }
+    // completeness defaultVerdict
+    if (D.completeness) {
+      (D.completeness.journey || []).forEach(it => { if (!fb.verdicts['cmp-j-' + it.id] && it.defaultVerdict) counts.completeness++; });
+      (D.completeness.frSlots || []).forEach(it => { if (!fb.verdicts['cmp-fr-' + it.id] && it.defaultVerdict) counts.completeness++; });
+      (D.completeness.wildFeatures || []).forEach(it => { if (!fb.verdicts['cmp-wf-' + it.id] && it.defaultVerdict) counts.completeness++; });
+      (D.completeness.reconcile || []).forEach(it => { if (!fb.verdicts['cmp-rc-' + it.id] && it.defaultVerdict) counts.completeness++; });
+    }
     return counts;
   }
 
@@ -96,7 +103,7 @@
   // 更新各 tab 角标
   function updateTabBadges() {
     const counts = countByFace();
-    const faces = ['prd', 'proto', 'arch', 'test', 'ui'];
+    const faces = ['prd', 'proto', 'arch', 'test', 'ui', 'completeness'];
     faces.forEach(face => {
       const btn = document.querySelector('#tabs button[data-tab="' + face + '"]');
       if (!btn) return;
@@ -221,6 +228,7 @@
     else if (curTab === 'arch') renderArch();
     else if (curTab === 'test') renderTest();
     else if (curTab === 'ui') renderUI();
+    else if (curTab === 'completeness') renderCompleteness();
   }
 
   // ---------- PRD ----------
@@ -474,6 +482,185 @@
     view.replaceChildren(root);
   }
 
+  // ---------- 交互完整性自查 ----------
+  function renderCompleteness() {
+    if (!D.completeness) { view.innerHTML = ''; return; }
+    const C = D.completeness;
+    const root = el('div');
+    root.appendChild(faceHead('交互完整性自查', C.note || '逐条审查用户旅程、FR 三件套、野生功能与三方对账，确保"建了必有确认"。'));
+    root.appendChild(el('div', 'legend', '四组检查项逐条表态：覆盖/符合 · 缺失/待定 · 删功能 ——每条都必须有态度，不允许留空。'));
+    root.appendChild(makePartialSaveBtn('completeness'));
+
+    // ── Section 1：用户旅程七段 ──
+    if (C.journey && C.journey.length) {
+      const s = el('div', 'section');
+      s.appendChild(el('h2', null, '用户旅程覆盖 <span class="tag">七段式</span>'));
+      const hint = el('div', 'cmp-hint', '每段必须表态：覆盖 / 明确不做 / 待定。"待定"意味着需要明确决策。');
+      s.appendChild(hint);
+      C.journey.forEach(it => {
+        const c = el('div', 'card' + (it.important ? ' card-important' : ''));
+        if (it.important) c.appendChild(el('div', 'important-bar'));
+        c.appendChild(el('div', 'cid', esc(it.id)));
+        c.appendChild(el('div', 'ctitle', esc(it.label)));
+        if (it.body) c.appendChild(el('div', 'cbody', esc(it.body)));
+        if (it.gap) {
+          const gd = el('div', 'ac cmp-gap');
+          gd.innerHTML = '<b>缺口：</b>' + esc(it.gap);
+          c.appendChild(gd);
+        }
+        // journey 的 verdict 语义：ok=覆盖 / no=明确不做 / q=待定
+        const journeyItem = Object.assign({}, it, { defaultVerdict: it.defaultVerdict || null });
+        const vc = verdictCtlCustom('cmp-j-' + it.id, it.id + ' ' + it.label, 'completeness', journeyItem, [['ok', '覆盖'], ['no', '明确不做'], ['q', '待定']]);
+        c.appendChild(vc);
+        s.appendChild(c);
+      });
+      root.appendChild(s);
+    }
+
+    // ── Section 2：FR 三件套审查 ──
+    if (C.frSlots && C.frSlots.length) {
+      const s = el('div', 'section');
+      s.appendChild(el('h2', null, 'FR 三件套审查 <span class="tag">状态·反向流·错误恢复</span>'));
+      const hint = el('div', 'cmp-hint', '每条 FR 的 states（所有状态含失败/空/待处理）/ inverseFlow（有创建是否有删除/撤销/重试）/ errorRecovery（AI 类分错了用户怎么救）是否齐全。');
+      s.appendChild(hint);
+      C.frSlots.forEach(it => {
+        const c = el('div', 'card' + (it.important ? ' card-important' : ''));
+        if (it.important) c.appendChild(el('div', 'important-bar'));
+        c.appendChild(el('div', 'cid', esc(it.fr)));
+        c.appendChild(el('div', 'ctitle', esc(it.title)));
+        // 三件套详情
+        const detail = el('div', 'cmp-slots');
+        if (it.states !== undefined) {
+          const row = el('div', 'cmp-slot-row');
+          row.appendChild(el('span', 'cmp-slot-label', 'States：'));
+          row.appendChild(el('span', 'cmp-slot-val ' + (it.states ? 'cmp-ok' : 'cmp-miss'), it.states || '缺失'));
+          detail.appendChild(row);
+        }
+        if (it.inverseFlow !== undefined) {
+          const row = el('div', 'cmp-slot-row');
+          row.appendChild(el('span', 'cmp-slot-label', '反向流：'));
+          row.appendChild(el('span', 'cmp-slot-val ' + (it.inverseFlow ? 'cmp-ok' : 'cmp-miss'), it.inverseFlow || '缺失'));
+          detail.appendChild(row);
+        }
+        if (it.errorRecovery !== undefined) {
+          const row = el('div', 'cmp-slot-row');
+          row.appendChild(el('span', 'cmp-slot-label', '错误恢复：'));
+          row.appendChild(el('span', 'cmp-slot-val ' + (it.errorRecovery ? 'cmp-ok' : 'cmp-miss'), it.errorRecovery || '缺失'));
+          detail.appendChild(row);
+        }
+        c.appendChild(detail);
+        if (it.note) { const nd = el('div', 'ac'); nd.innerHTML = '<b>备注：</b>' + esc(it.note); c.appendChild(nd); }
+        // verdict 语义：ok=齐全 / no=缺项 / q=待核实
+        const vc = verdictCtlCustom('cmp-fr-' + it.id, it.fr + ' ' + it.title, 'completeness', it, [['ok', '三件套齐全'], ['no', '有缺项'], ['q', '待核实']]);
+        c.appendChild(vc);
+        s.appendChild(c);
+      });
+      root.appendChild(s);
+    }
+
+    // ── Section 3：野生功能（建了但没确认） ──
+    if (C.wildFeatures && C.wildFeatures.length) {
+      const s = el('div', 'section');
+      s.appendChild(el('h2', null, '野生功能清单 <span class="tag">建了但没确认</span>'));
+      const hint = el('div', 'cmp-hint', '每条必须二选一：补需求（补写 FR/AC）或 删功能（从代码移除）。不允许留在灰色地带。');
+      s.appendChild(hint);
+      C.wildFeatures.forEach(it => {
+        const c = el('div', 'card' + (it.important ? ' card-important' : ''));
+        if (it.important) c.appendChild(el('div', 'important-bar'));
+        c.appendChild(el('div', 'cid', esc(it.id)));
+        c.appendChild(el('div', 'ctitle', esc(it.title)));
+        if (it.body) c.appendChild(el('div', 'cbody', esc(it.body)));
+        if (it.risk) {
+          const rd = el('div', 'ac');
+          rd.innerHTML = '<b style="color:var(--bad)">风险：</b>' + esc(it.risk);
+          c.appendChild(rd);
+        }
+        // verdict 语义：ok=补需求 / no=删功能 / q=待定
+        const vc = verdictCtlCustom('cmp-wf-' + it.id, it.id + ' ' + it.title, 'completeness', it, [['ok', '补需求'], ['no', '删功能'], ['q', '待定']]);
+        c.appendChild(vc);
+        s.appendChild(c);
+      });
+      root.appendChild(s);
+    }
+
+    // ── Section 4：三方对账（稿↔FR↔代码） ──
+    if (C.reconcile && C.reconcile.length) {
+      const s = el('div', 'section');
+      s.appendChild(el('h2', null, '稿↔FR↔代码 三方对账 <span class="tag">对账</span>'));
+      const hint = el('div', 'cmp-hint', '标出"稿有代码无"/"代码有需求无"/"稿A代码B"的不一致项，逐条决策。');
+      s.appendChild(hint);
+      C.reconcile.forEach(it => {
+        const c = el('div', 'card' + (it.important ? ' card-important' : ''));
+        if (it.important) c.appendChild(el('div', 'important-bar'));
+        c.appendChild(el('div', 'cid', esc(it.id)));
+        // 类型标签
+        const typeMap = { 'spec-only': '稿有代码无', 'code-only': '代码有需求无', 'mismatch': '稿A代码B' };
+        if (it.type) {
+          c.appendChild(el('span', 'cmp-rc-type cmp-rc-' + it.type, typeMap[it.type] || esc(it.type)));
+        }
+        c.appendChild(el('div', 'ctitle', esc(it.title)));
+        if (it.spec) { const d = el('div', 'cbody'); d.innerHTML = '<b>稿：</b>' + esc(it.spec); c.appendChild(d); }
+        if (it.code) { const d = el('div', 'cbody'); d.innerHTML = '<b>代码：</b>' + esc(it.code); c.appendChild(d); }
+        if (it.action) { const d = el('div', 'ac'); d.innerHTML = '<b>建议：</b>' + esc(it.action); c.appendChild(d); }
+        // verdict 语义：ok=已对齐 / no=需修改 / q=待定
+        const vc = verdictCtlCustom('cmp-rc-' + it.id, it.id + ' ' + it.title, 'completeness', it, [['ok', '已对齐'], ['no', '需修改'], ['q', '待定']]);
+        c.appendChild(vc);
+        s.appendChild(c);
+      });
+      root.appendChild(s);
+    }
+
+    view.replaceChildren(root);
+  }
+
+  // verdictCtl 的扩展版，支持自定义按钮标签（覆盖/缺失/待定等）
+  function verdictCtlCustom(refId, refLabel, face, item, btnDefs) {
+    item = item || {};
+    const defaultV = item.defaultVerdict || null;
+    const important = !!item.important;
+    const wrap = el('div');
+    if (important) wrap.appendChild(el('span', 'important-tag', '需确认'));
+    const cur = fb.verdicts[refId] || {};
+    const effectiveVerdict = cur.verdict || (cur.verdict === null ? null : defaultV);
+    const row = el('div', 'verdict');
+    btnDefs.forEach(([v, label]) => {
+      const isActive = effectiveVerdict === v;
+      const isDefault = !cur.verdict && defaultV === v;
+      const b = el('button', 'vbtn' + (isActive ? ' on' : '') + (isDefault ? ' default-active' : ''));
+      b.dataset.v = v; b.textContent = label;
+      if (isDefault && !cur.verdict) b.appendChild(el('span', 'default-hint', '默认'));
+      b.onclick = () => {
+        const c = fb.verdicts[refId] || {};
+        c.verdict = (c.verdict === v ? null : v);
+        c.refLabel = refLabel; c.face = face;
+        fb.verdicts[refId] = c;
+        saveFb(); toastSaved();
+        const newEffective = c.verdict || (c.verdict === null ? null : defaultV);
+        [...row.children].forEach(x => {
+          const isNowActive = x.dataset.v === newEffective;
+          const isNowDefault = !c.verdict && defaultV === x.dataset.v;
+          x.className = 'vbtn' + (isNowActive ? ' on' : '') + (isNowDefault ? ' default-active' : '');
+          const oldHint = x.querySelector('.default-hint');
+          if (oldHint) oldHint.remove();
+          if (isNowDefault && !c.verdict) x.appendChild(el('span', 'default-hint', '默认'));
+        });
+        ta.classList.toggle('show', !!(c.verdict === 'no' || c.verdict === 'q' || c.comment));
+      };
+      row.appendChild(b);
+    });
+    wrap.appendChild(row);
+    const ta = el('textarea', 'cmt' + ((cur.verdict === 'no' || cur.verdict === 'q' || cur.comment) ? ' show' : ''));
+    ta.placeholder = '补充说明（缺哪项 / 改成什么 / 优先级…）'; ta.value = cur.comment || '';
+    ta.oninput = () => {
+      const c = fb.verdicts[refId] || {};
+      c.comment = ta.value.trim() || null; c.refLabel = refLabel; c.face = face;
+      fb.verdicts[refId] = c; saveFb();
+    };
+    ta.onblur = () => { if (ta.value.trim()) toastSaved(); };
+    wrap.appendChild(ta);
+    return wrap;
+  }
+
   // ---------- 评论气泡 ----------
   const pop = document.getElementById('commentPop');
   let popCtx = null;
@@ -565,8 +752,8 @@
       return;
     }
 
-    const faceOrder = ['prd', 'proto', 'arch', 'test', 'ui'];
-    const faceNames = { prd: 'PRD', proto: '原型', arch: '架构', test: '测试', ui: 'UI 设计' };
+    const faceOrder = ['prd', 'proto', 'arch', 'test', 'ui', 'completeness'];
+    const faceNames = { prd: 'PRD', proto: '原型', arch: '架构', test: '测试', ui: 'UI 设计', completeness: '交互完整性' };
     const byFace = {};
     r.items.forEach(it => {
       const f = it.face || 'other';
@@ -734,6 +921,12 @@
     const uiTabBtn = el('button', null, 'UI 设计');
     uiTabBtn.dataset.tab = 'ui';
     tabs.appendChild(uiTabBtn);
+  }
+  // 动态插入「交互完整性自查」tab（仅当 D.completeness 存在）
+  if (D.completeness) {
+    const cmpTabBtn = el('button', null, '交互完整性');
+    cmpTabBtn.dataset.tab = 'completeness';
+    tabs.appendChild(cmpTabBtn);
   }
   ensureInteract();
   updateCount();
