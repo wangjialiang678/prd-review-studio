@@ -5,3 +5,6 @@ feedback/
 
 # 私有项目数据（不进公开仓库；示范保留 demo.js）
 public/projects/recorder-app.js
+# 录音 App 的 UI 风格选型稿 + 高保真设计稿（私有，仅部署不公开）
+public/ui-styles.html
+public/ui/

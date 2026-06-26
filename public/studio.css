@@ -215,3 +215,15 @@ details.fold[open]>summary:before{content:"▾ "}
 .last-round-box{margin-bottom:12px}
 .last-round-details>summary{font-size:13px;color:var(--muted)}
 .last-round-content{padding:10px 0 4px;max-height:180px;overflow:auto}
+
+/* UI 设计面 */
+.phoneWrap--multi{flex-wrap:wrap;gap:24px;align-items:flex-start;justify-content:center}
+.uiPhoneWrap{display:flex;flex-direction:column;align-items:center;gap:8px}
+.ui-screen-label{font-size:12px;color:var(--muted);font-weight:600;text-align:center}
+/* ui-screen-inner 充满 .phone 内容区（.phone 有 border:10px 和 border-radius，overflow:hidden） */
+.ui-screen-inner{position:absolute;inset:0;display:flex;flex-direction:column}
+.ui-iframe{width:100%;height:100%;border:none;display:block;flex:1}
+/* 预览模式：浮层透明不捕获事件，iframe 可交互 */
+.ui-annot-overlay{position:absolute;inset:0;z-index:10;pointer-events:none}
+/* 批注模式：mode-ui-annotate 下浮层捕获事件（通过 JS 内联 style 控制） */
+.mode-ui-annotate .ui-annot-overlay{cursor:crosshair}

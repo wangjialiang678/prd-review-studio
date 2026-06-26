@@ -7,7 +7,7 @@
   document.getElementById('projTitle').textContent = '· ' + D.title;
 
   // 视图状态（提前声明，避免 applyTheme 初始化时的 TDZ）
-  let curTab = 'prd', protoMode = 'preview';
+  let curTab = 'prd', protoMode = 'preview', uiMode = 'preview';
   let curScreen = (D.proto && D.proto.screens[0]) ? D.proto.screens[0].id : null;
 
   // ---------- helpers ----------
@@ -49,15 +49,18 @@
 
   // 统计各 face 已填条数（用于角标）
   function countByFace() {
-    const counts = { prd: 0, proto: 0, arch: 0, test: 0 };
+    const counts = { prd: 0, proto: 0, arch: 0, test: 0, ui: 0 };
     // verdicts
     for (const k in fb.verdicts) {
       const v = fb.verdicts[k];
       if (v && (v.verdict || v.comment) && v.face) counts[v.face] = (counts[v.face] || 0) + 1;
     }
     // 原型：defaultVerdict 不参与 proto 计数，仅计真实操作
-    // 评论（proto）
-    counts.proto += fb.comments.length;
+    // 评论（proto / ui）
+    fb.comments.forEach(c => {
+      if (c.face === 'ui') counts.ui = (counts.ui || 0) + 1;
+      else if (c.face === 'proto') counts.proto++;
+    });
     counts.proto += Object.keys(fb.moves).length;
     // PRD defaultVerdict 计入
     if (D.prd) {
@@ -93,10 +96,10 @@
   // 更新各 tab 角标
   function updateTabBadges() {
     const counts = countByFace();
-    const tabMap = { prd: 'prd', proto: 'proto', arch: 'arch', test: 'test' };
-    for (const face in tabMap) {
+    const faces = ['prd', 'proto', 'arch', 'test', 'ui'];
+    faces.forEach(face => {
       const btn = document.querySelector('#tabs button[data-tab="' + face + '"]');
-      if (!btn) continue;
+      if (!btn) return;
       let badge = btn.querySelector('.tab-badge');
       const n = counts[face] || 0;
       if (n > 0) {
@@ -105,7 +108,7 @@
       } else {
         if (badge) badge.remove();
       }
-    }
+    });
   }
 
   // ---------- theme ----------
@@ -196,15 +199,20 @@
   // ---------- tabs & modes ----------
   const tabs = document.getElementById('tabs');
   const protoModes = document.getElementById('protoModes');
+  const uiModes = document.getElementById('uiModes');
   tabs.onclick = (e) => { const b = e.target.closest('button[data-tab]'); if (b) setTab(b.dataset.tab); };
   function setTab(t) {
     curTab = t;
     [...tabs.children].forEach(b => b.classList.toggle('active', b.dataset.tab === t));
     protoModes.style.display = t === 'proto' ? 'flex' : 'none';
+    if (uiModes) uiModes.style.display = t === 'ui' ? 'flex' : 'none';
     render();
   }
   protoModes.onclick = (e) => { const b = e.target.closest('button[data-mode]'); if (!b) return; protoMode = b.dataset.mode; [...protoModes.children].forEach(x => x.classList.toggle('active', x === b)); renderProto(); };
-  function setBodyMode() { document.body.className = curTab === 'proto' ? ('mode-proto-' + protoMode) : ''; }
+  if (uiModes) {
+    uiModes.onclick = (e) => { const b = e.target.closest('button[data-mode]'); if (!b) return; uiMode = b.dataset.mode; [...uiModes.children].forEach(x => x.classList.toggle('active', x === b)); renderUI(); };
+  }
+  function setBodyMode() { document.body.className = curTab === 'proto' ? ('mode-proto-' + protoMode) : (curTab === 'ui' ? ('mode-ui-' + uiMode) : ''); }
 
   function render() {
     setBodyMode();
@@ -212,6 +220,7 @@
     else if (curTab === 'proto') renderProto();
     else if (curTab === 'arch') renderArch();
     else if (curTab === 'test') renderTest();
+    else if (curTab === 'ui') renderUI();
   }
 
   // ---------- PRD ----------
@@ -408,6 +417,63 @@
     view.replaceChildren(root);
   }
 
+  // ---------- UI 设计 ----------
+  function renderUI() {
+    setBodyMode();
+    if (!D.ui) { view.innerHTML = ''; return; }
+    const root = el('div');
+    root.appendChild(faceHead('UI 设计', D.ui.note));
+    const bar = el('div', 'protoBar');
+    const hintMap = { preview: '预览：iframe 可交互', annotate: '批注：点击画面任意位置加评论' };
+    bar.appendChild(el('span', 'hint', hintMap[uiMode] || ''));
+    root.appendChild(bar);
+
+    const wrap = el('div', 'phoneWrap phoneWrap--multi');
+    D.ui.screens.forEach(sc => {
+      const phoneWrap = el('div', 'uiPhoneWrap');
+
+      // 手机外框
+      const phone = el('div', 'phone');
+      phone.appendChild(el('div', 'notch'));
+
+      // iframe 容器（绝对定位充满 .phone 内容区）
+      const inner = el('div', 'ui-screen-inner');
+
+      const iframe = el('iframe', 'ui-iframe');
+      iframe.src = sc.src;
+      iframe.setAttribute('frameborder', '0');
+      iframe.setAttribute('scrolling', 'auto');
+      inner.appendChild(iframe);
+
+      // 透明浮层（覆盖 iframe，用于批注点击捕获和钉子渲染）
+      const overlay = el('div', 'ui-annot-overlay');
+      // 渲染已有批注钉子
+      fb.comments.filter(c => c.face === 'ui' && c.screenId === sc.id).forEach(c => {
+        overlay.appendChild(makePin(c));
+      });
+      // 批注模式：捕获点击
+      if (uiMode === 'annotate') {
+        overlay.style.pointerEvents = 'auto';
+        overlay.addEventListener('click', (ev) => {
+          if (ev.target.classList.contains('pin')) return;
+          const r = overlay.getBoundingClientRect();
+          openComment({ face: 'ui', screenId: sc.id, xPct: ((ev.clientX - r.left) / r.width) * 100, yPct: ((ev.clientY - r.top) / r.height) * 100, refLabel: sc.name });
+        });
+      } else {
+        overlay.style.pointerEvents = 'none';
+      }
+      inner.appendChild(overlay);
+
+      phone.appendChild(inner);
+      const label = el('div', 'ui-screen-label', esc(sc.name));
+      phoneWrap.appendChild(phone);
+      phoneWrap.appendChild(label);
+      wrap.appendChild(phoneWrap);
+    });
+    root.appendChild(wrap);
+    view.replaceChildren(root);
+  }
+
   // ---------- 评论气泡 ----------
   const pop = document.getElementById('commentPop');
   let popCtx = null;
@@ -423,9 +489,16 @@
     const txt = document.getElementById('popText').value.trim();
     if (popCtx.id) { const c = fb.comments.find(x => x.id === popCtx.id); if (c) { if (txt) c.comment = txt; else fb.comments = fb.comments.filter(x => x.id !== popCtx.id); } }
     else if (txt) { fb.comments.push({ id: 'c' + Date.now() + Math.floor(Math.random() * 1e4), face: popCtx.face, screenId: popCtx.screenId, xPct: popCtx.xPct, yPct: popCtx.yPct, refLabel: popCtx.refLabel, comment: txt }); }
-    saveFb(); toastSaved(); pop.classList.add('hidden'); if (curTab === 'proto') renderProto();
+    saveFb(); toastSaved(); pop.classList.add('hidden');
+    if (curTab === 'proto') renderProto();
+    else if (curTab === 'ui') renderUI();
   };
-  document.getElementById('popDelete').onclick = () => { if (popCtx && popCtx.id) { fb.comments = fb.comments.filter(x => x.id !== popCtx.id); saveFb(); } pop.classList.add('hidden'); if (curTab === 'proto') renderProto(); };
+  document.getElementById('popDelete').onclick = () => {
+    if (popCtx && popCtx.id) { fb.comments = fb.comments.filter(x => x.id !== popCtx.id); saveFb(); }
+    pop.classList.add('hidden');
+    if (curTab === 'proto') renderProto();
+    else if (curTab === 'ui') renderUI();
+  };
   document.getElementById('popCancel').onclick = () => pop.classList.add('hidden');
 
   // ---------- 历史轮次面板 ----------
@@ -492,8 +565,8 @@
       return;
     }
 
-    const faceOrder = ['prd', 'proto', 'arch', 'test'];
-    const faceNames = { prd: 'PRD', proto: '原型', arch: '架构', test: '测试' };
+    const faceOrder = ['prd', 'proto', 'arch', 'test', 'ui'];
+    const faceNames = { prd: 'PRD', proto: '原型', arch: '架构', test: '测试', ui: 'UI 设计' };
     const byFace = {};
     r.items.forEach(it => {
       const f = it.face || 'other';
@@ -656,6 +729,12 @@
   };
 
   // ---------- init ----------
+  // 动态插入 UI 设计 tab（仅当 D.ui 存在）
+  if (D.ui) {
+    const uiTabBtn = el('button', null, 'UI 设计');
+    uiTabBtn.dataset.tab = 'ui';
+    tabs.appendChild(uiTabBtn);
+  }
   ensureInteract();
   updateCount();
   updateTabBadges();
